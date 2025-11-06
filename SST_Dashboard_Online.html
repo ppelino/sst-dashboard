@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>DataInsight SST — Dashboard Online (Extintores & Inspeções)</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" />
+<link rel="preconnect" href="https://cdnjs.cloudflare.com" />
+<style>
+  :root{
+    --bg:#0b1220; --panel:#111a2b; --muted:#7f8aa3; --txt:#e8eefc; --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444; --accent:#60a5fa;
+  }
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.45 system-ui,Segoe UI,Roboto}
+  header{padding:20px 24px;border-bottom:1px solid #1f2b44;background:linear-gradient(180deg,#0b1220,#0b1220cc)}
+  h1{margin:0;font-size:20px;display:flex;gap:12px;align-items:center}
+  h1 span.logo{padding:6px 10px;border-radius:10px;background:#0e1a33;color:#9cc1ff;font-weight:700}
+  .wrap{padding:24px;max-width:1200px;margin:0 auto}
+  .grid{display:grid;gap:16px}
+  @media(min-width:900px){.grid.cols-4{grid-template-columns:repeat(4,1fr)} .grid.cols-2{grid-template-columns:2fr 1fr}}
+  .card{background:var(--panel);border:1px solid #1f2b44;border-radius:16px;padding:16px;box-shadow:0 6px 18px rgba(0,0,0,.25)}
+  .kpi{display:flex;justify-content:space-between;align-items:baseline}
+  .kpi .label{color:var(--muted);font-size:13px}
+  .kpi .value{font-size:28px;font-weight:800}
+  .kpi .trend{font-size:12px;padding:2px 8px;border-radius:999px}
+  .trend.ok{background:#12351f;color:#9be6b5}
+  .trend.warn{background:#3a2d12;color:#ffd58a}
+  .trend.bad{background:#3a1616;color:#ffb4b4}
+  .controls{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:12px}
+  .btn{background:#122340;color:#cfe4ff;border:1px solid #24406e;padding:10px 14px;border-radius:10px;cursor:pointer}
+  .btn:hover{filter:brightness(1.1)}
+  .tag{font-size:12px;color:#a9b8d6;background:#0f1b33;border:1px solid #273a61;padding:4px 8px;border-radius:999px}
+  table{width:100%;border-collapse:separate;border-spacing:0 8px}
+  th,td{text-align:left;padding:10px 12px}
+  thead th{color:#9fb3d6;font-size:12px;border-bottom:1px solid #243355}
+  tbody tr{background:#0f182a;border:1px solid #203256}
+  tbody td:first-child{border-radius:10px 0 0 10px}
+  tbody td:last-child{border-radius:0 10px 10px 0}
+  .status{font-weight:700}
+  .status.ok{color:var(--ok)} .status.warn{color:var(--warn)} .status.bad{color:var(--bad)}
+  footer{color:#8da3c7;text-align:center;padding:28px 0}
+  .note{color:#87a0c9;font-size:13px}
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="logo">DataInsight SST</span> Dashboard Online — Extintores & Inspeções (Demo)</h1>
+</header>
+
+<div class="wrap">
+  <div class="controls">
+    <button class="btn" id="btnSimular">Simular dados (100 itens)</button>
+    <label class="btn" for="csvInput">Carregar CSV</label>
+    <input id="csvInput" type="file" accept=".csv" style="display:none" />
+    <span class="tag">Campos CSV: id,area,tipo,validade(AAAA-MM-DD),pressao(0-100),risco(baixo|moderado|alto)</span>
+  </div>
+
+  <div class="grid cols-4">
+    <div class="card">
+      <div class="kpi">
+        <div>
+          <div class="label">Total Equipamentos</div>
+          <div class="value" id="kTotal">–</div>
+        </div>
+        <span class="trend ok" id="kAtualizado">Atualizado agora</span>
+      </div>
+    </div>
+    <div class="card">
+      <div class="kpi">
+        <div>
+          <div class="label">Vencidos</div>
+          <div class="value" id="kVencidos">–</div>
+        </div>
+        <span class="trend bad">Atenção</span>
+      </div>
+    </div>
+    <div class="card">
+      <div class="kpi">
+        <div>
+          <div class="label">Vencem em 30 dias</div>
+          <div class="value" id="k30d">–</div>
+        </div>
+        <span class="trend warn">Planejar</span>
+      </div>
+    </div>
+    <div class="card">
+      <div class="kpi">
+        <div>
+          <div class="label">OK / Dentro da validade</div>
+          <div class="value" id="kOk">–</div>
+        </div>
+        <span class="trend ok">Estável</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid cols-2" style="margin-top:16px">
+    <div class="card">
+      <h3 style="margin:0 0 8px 0">Status por Área</h3>
+      <canvas id="barStatus" height="140"></canvas>
+      <div class="note">Soma de itens por status (OK / 30d / Vencido) agrupado por área.</div>
+    </div>
+    <div class="card">
+      <h3 style="margin:0 0 8px 0">Distribuição de Risco</h3>
+      <canvas id="pieRisco" height="140"></canvas>
+      <div class="note">Classificação de risco declarada no cadastro (baixo/moderado/alto).</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3 style="margin:0 0 8px 0">Próximos a vencer</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th><th>Área</th><th>Tipo</th><th>Validade</th><th>Pressão</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="tblBody"></tbody>
+    </table>
+    <div class="note">Top 15 itens mais críticos por data de validade.</div>
+  </div>
+
+  <footer>© DataInsight SST — Demo interativa em HTML puro + Chart.js (via CDN)</footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+// ----------------- Utilidades -----------------
+const el = (id)=>document.getElementById(id);
+const toDate=(s)=> new Date(s);
+const fmtDate=(d)=> d.toISOString().slice(0,10);
+const daysBetween=(a,b)=> Math.round((b - a)/(1000*60*60*24));
+
+// ----------------- Dataset (inicial vazio) -----------------
+let DATA = [];
+
+// ----------------- Simulador -----------------
+function simular(n=100){
+  const areas = ["Bloco A","Bloco B","Laboratório","Administração","Refeitório","Ginásio"];
+  const tipos = ["Água","Pó ABC","CO2","Espuma"];
+  const riscos = ["baixo","moderado","alto"];
+  const today = new Date();
+  const arr = [];
+  for (let i=1;i<=n;i++){
+    const area = areas[Math.floor(Math.random()*areas.length)];
+    const tipo = tipos[Math.floor(Math.random()*tipos.length)];
+    const risco = riscos[Math.floor(Math.random()*riscos.length)];
+    const delta = Math.floor(Math.random()*180)-60; // entre -60 e +120 dias
+    const validade = new Date(today.getTime()+delta*86400000);
+    const pressao = Math.floor(60+Math.random()*40); // 60-100
+    arr.push({
+      id: `EXT-${String(i).padStart(3,'0')}`,
+      area, tipo, risco,
+      validade: fmtDate(validade),
+      pressao
+    });
+  }
+  return arr;
+}
+
+// ----------------- CSV simples (FileReader) -----------------
+function parseCSV(text){
+  const lines = text.trim().split(/\r?\n/);
+  const header = lines.shift().split(',').map(s=>s.trim().toLowerCase());
+  const idx = (name)=> header.indexOf(name);
+  const out = [];
+  for(const line of lines){
+    if(!line.trim()) continue;
+    const cols = line.split(',').map(s=>s.trim());
+    out.push({
+      id: cols[idx("id")],
+      area: cols[idx("area")],
+      tipo: cols[idx("tipo")],
+      validade: cols[idx("validade")],
+      pressao: Number(cols[idx("pressao")]),
+      risco: (cols[idx("risco")]||"").toLowerCase()
+    });
+  }
+  return out;
+}
+
+// ----------------- Status lógico -----------------
+function statusItem(item){
+  const hoje = new Date();
+  const val = toDate(item.validade);
+  const dias = daysBetween(hoje, val);
+  if (dias < 0) return {label:"Vencido", cls:"bad"};
+  if (dias <= 30) return {label:"Vence em 30d", cls:"warn"};
+  return {label:"OK", cls:"ok"};
+}
+
+// ----------------- KPIs -----------------
+function atualizarKPIs(data){
+  const total = data.length;
+  let v=0,p=0,o=0;
+  data.forEach(it=>{
+    const st = statusItem(it).label;
+    if(st==="Vencido") v++;
+    else if(st==="Vence em 30d") p++;
+    else o++;
+  });
+  el("kTotal").textContent = total;
+  el("kVencidos").textContent = v;
+  el("k30d").textContent = p;
+  el("kOk").textContent = o;
+  el("kAtualizado").textContent = "Atualizado " + new Date().toLocaleTimeString();
+}
+
+// ----------------- Tabela -----------------
+function atualizarTabela(data){
+  const hoje = new Date();
+  const ordenado = [...data].sort((a,b)=> toDate(a.validade)-toDate(b.validade)).slice(0,15);
+  const rows = ordenado.map(it=>{
+    const st = statusItem(it);
+    return `<tr>
+      <td>${it.id}</td>
+      <td>${it.area}</td>
+      <td>${it.tipo}</td>
+      <td>${it.validade}</td>
+      <td>${it.pressao}%</td>
+      <td class="status ${st.cls}">${st.label}</td>
+    </tr>`;
+  }).join("");
+  el("tblBody").innerHTML = rows || "<tr><td colspan='6'>Sem registros</td></tr>";
+}
+
+// ----------------- Gráficos -----------------
+let chartBar=null, chartPie=null;
+
+function agruparPorArea(data){
+  const map = {};
+  data.forEach(it=>{
+    const a = it.area || "—";
+    if(!map[a]) map[a] = {ok:0,p30:0,ven:0};
+    const st = statusItem(it).label;
+    if(st==="Vencido") map[a].ven++;
+    else if(st==="Vence em 30d") map[a].p30++;
+    else map[a].ok++;
+  });
+  return map;
+}
+
+function atualizarGraficos(data){
+  const porArea = agruparPorArea(data);
+  const labels = Object.keys(porArea);
+  const ok = labels.map(a=>porArea[a].ok);
+  const p30 = labels.map(a=>porArea[a].p30);
+  const ven = labels.map(a=>porArea[a].ven);
+
+  const riscoCount = {baixo:0, moderado:0, alto:0};
+  data.forEach(d=>{
+    const r = (d.risco||"").toLowerCase();
+    if(riscoCount[r]!==undefined) riscoCount[r]++;
+  });
+
+  // Bar
+  const ctxB = document.getElementById('barStatus').getContext('2d');
+  if(chartBar) chartBar.destroy();
+  chartBar = new Chart(ctxB, {
+    type:'bar',
+    data:{
+      labels,
+      datasets:[
+        {label:'OK', data:ok, borderWidth:1},
+        {label:'Vence em 30d', data:p30, borderWidth:1},
+        {label:'Vencido', data:ven, borderWidth:1}
+      ]
+    },
+    options:{
+      responsive:true,
+      plugins:{legend:{labels:{color:'#cfe4ff'}}},
+      scales:{
+        x:{ticks:{color:'#cfe4ff'}, grid:{color:'#223451'}},
+        y:{ticks:{color:'#cfe4ff'}, grid:{color:'#223451'}}
+      }
+    }
+  });
+
+  // Pie
+  const ctxP = document.getElementById('pieRisco').getContext('2d');
+  if(chartPie) chartPie.destroy();
+  chartPie = new Chart(ctxP, {
+    type:'pie',
+    data:{
+      labels:['baixo','moderado','alto'],
+      datasets:[{data:[riscoCount.baixo, riscoCount.moderado, riscoCount.alto]}]
+    },
+    options:{
+      plugins:{legend:{labels:{color:'#cfe4ff'}}}
+    }
+  });
+}
+
+// ----------------- Atualização geral -----------------
+function atualizarTudo(data){
+  DATA = data;
+  atualizarKPIs(DATA);
+  atualizarTabela(DATA);
+  atualizarGraficos(DATA);
+}
+
+// ----------------- Eventos -----------------
+el("btnSimular").addEventListener("click", ()=> atualizarTudo(simular(100)));
+
+el("csvInput").addEventListener("change", (ev)=>{
+  const file = ev.target.files[0];
+  if(!file) return;
+  const fr = new FileReader();
+  fr.onload = () => {
+    try{
+      const rows = parseCSV(fr.result);
+      atualizarTudo(rows);
+    }catch(e){
+      alert("Erro ao ler CSV: " + e.message);
+    }
+  };
+  fr.readAsText(file, 'UTF-8');
+});
+
+// Carrega uma simulação inicial
+atualizarTudo(simular(60));
+</script>
+</body>
+</html>
